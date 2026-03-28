@@ -9,14 +9,24 @@
 
 ## 今回作るテーブル
 
+### users（ユーザー）
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| id | integer | 自動採番 |
+| name | string | ユーザー名 |
+| email | string | ユニーク制約あり |
+| password_digest | string | bcryptでハッシュ化されたパスワード |
+| created_at | datetime | 自動 |
+
 ### tasks（タスク）
 
 | カラム | 型 | 説明 |
 |---|---|---|
-| id | integer | 自動採番（書かなくていい） |
+| id | integer | 自動採番 |
 | title | string | タスク名 |
 | priority | integer | 1〜6の順番（1が最優先） |
-| created_at | datetime | 自動（書かなくていい） |
+| created_at | datetime | 自動 |
 
 ### daily_logs（日次記録）
 
@@ -33,9 +43,7 @@
 ## モデル生成コマンド
 
 ```bash
-# backendディレクトリで実行
-cd backend
-
+rails g model User name:string email:string password_digest:string
 rails g model Task title:string priority:integer
 rails g model DailyLog task:references status:string logged_on:date
 ```
@@ -44,43 +52,30 @@ rails g model DailyLog task:references status:string logged_on:date
 
 **`task:references`** は `task_id` カラム（外部キー）を自動で作る書き方。
 
-実行すると以下が生成される：
-```
-app/models/task.rb
-app/models/daily_log.rb
-db/migrate/20xxxxxx_create_tasks.rb
-db/migrate/20xxxxxx_create_daily_logs.rb
-```
-
 ---
 
-## マイグレーションとは？
+## マイグレーションを修正する
 
-**マイグレーション** = DBのテーブル構造を変更する手順書。
-`db/migrate/` に時系列で保存されるので、チームで共有・再現できる。
-
-生成されたファイルを確認してみよう：
+### users にユニーク制約を追加
 
 ```ruby
-# db/migrate/xxxxxx_create_tasks.rb
-class CreateTasks < ActiveRecord::Migration[8.1]
+# db/migrate/xxxxxx_create_users.rb
+class CreateUsers < ActiveRecord::Migration[8.1]
   def change
-    create_table :tasks do |t|
-      t.string :title
-      t.integer :priority
+    create_table :users do |t|
+      t.string :name
+      t.string :email, null: false
+      t.string :password_digest, null: false
 
       t.timestamps
     end
+
+    add_index :users, :email, unique: true  # メールアドレスの重複禁止
   end
 end
 ```
 
----
-
-## ユニーク制約を追加する
-
-`daily_logs` は同じタスクを同じ日に2回記録できないようにする。
-マイグレーションファイルに手動で追加する：
+### daily_logs にユニーク制約を追加
 
 ```ruby
 # db/migrate/xxxxxx_create_daily_logs.rb
@@ -117,19 +112,35 @@ rails db:migrate
 **バリデーション** = データを保存する前にチェックするルール。
 
 ```ruby
+# app/models/user.rb
+class User < ApplicationRecord
+  has_secure_password  # bcryptでパスワードをハッシュ化する（password_digestが必要）
+
+  validates :name, presence: true
+  validates :email, presence: true, uniqueness: true,
+            format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :password, length: { minimum: 8 }, if: :password_digest_changed?
+end
+```
+
+**`has_secure_password`** を使うと：
+- `password` と `password_confirmation` の属性が自動で追加される
+- `user.authenticate("パスワード")` でパスワードを検証できる
+- DBには `password_digest`（ハッシュ値）だけ保存される
+
+```ruby
 # app/models/task.rb
 class Task < ApplicationRecord
   has_many :daily_logs, dependent: :destroy
 
-  validates :title, presence: true    # タイトルは必須
+  validates :title, presence: true
   validates :priority, presence: true
 
-  validate :max_six_tasks             # カスタムバリデーション
+  validate :max_six_tasks
 
   private
 
   def max_six_tasks
-    # 新規作成のときだけチェック
     if new_record? && Task.count >= 6
       errors.add(:base, "タスクは6件までです")
     end
@@ -142,7 +153,7 @@ end
 class DailyLog < ApplicationRecord
   belongs_to :task
 
-  validates :status, inclusion: { in: %w[done skip] }  # done か skip だけ許可
+  validates :status, inclusion: { in: %w[done skip] }
   validates :logged_on, presence: true
 end
 ```
@@ -161,14 +172,18 @@ DailyLog  belongs_to :task   → ログは1つのタスクに属する
 ## 動作確認（Railsコンソール）
 
 ```bash
-rails console   # または rails c
+docker compose exec web rails console
 ```
 
 ```ruby
+# ユーザーを作ってみる
+user = User.create(name: "太郎", email: "taro@example.com", password: "password123")
+user.authenticate("password123")  # => userオブジェクト（成功）
+user.authenticate("wrong")        # => false（失敗）
+
 # タスクを作ってみる
 Task.create(title: "Rails学習", priority: 1)
-Task.all    # 一覧表示
-Task.count  # 件数
+Task.all
 ```
 
 ---

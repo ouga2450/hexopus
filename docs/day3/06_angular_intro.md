@@ -15,11 +15,12 @@ frontend/src/app/
 ├── app.ts               # ルートコンポーネント（全体の土台）
 ├── app.html             # ルートのHTML
 ├── app.routes.ts        # URLと画面の対応表
-├── app.config.ts        # アプリ全体の設定
-└── components/          # 各画面・部品
-    ├── focus/           # フォーカス画面（Day 4で作る）
-    ├── review/          # 振り返り画面（Day 4で作る）
-    └── tasks/           # タスク管理画面（Day 4で作る）
+├── app.config.ts        # アプリ全体の設定（interceptorもここ）
+└── components/          # 各画面
+    ├── login/           # ログイン・サインアップ画面
+    ├── focus/           # フォーカス画面（メイン）
+    ├── review/          # 振り返り画面
+    └── tasks/           # タスク管理画面
 ```
 
 ---
@@ -34,8 +35,8 @@ import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-focus',       // HTMLで <app-focus /> と使える
-  templateUrl: './focus.html', // このコンポーネントのHTML
-  styleUrl: './focus.scss'     // このコンポーネントのCSS
+  templateUrl: './focus.html',
+  styleUrl: './focus.scss'
 })
 export class FocusComponent {
   // ここにTypeScriptのロジックを書く
@@ -85,16 +86,9 @@ this.currentTask.set('Rails学習');
 ## コンポーネントの生成コマンド
 
 ```bash
-# frontendディレクトリで実行
 cd frontend
 
-ng generate component components/focus
-ng generate component components/review
-ng generate component components/tasks
-```
-
-または短縮形：
-```bash
+ng g c components/login
 ng g c components/focus
 ng g c components/review
 ng g c components/tasks
@@ -113,17 +107,30 @@ components/focus/
 
 ## Standalone Componentとは？
 
-従来のAngularは `NgModule` というまとめ役が必要だったが、最新のAngularでは不要になった。
-コンポーネント単体で動く。使いたい部品は `imports` に直接書く。
+最新のAngularでは `NgModule` が不要。コンポーネント単体で動く。
+使いたい部品は `imports` に直接書く。
 
 ```typescript
 @Component({
   selector: 'app-focus',
-  imports: [CommonModule, RouterLink],  // ← 使うものをここに書く
+  imports: [RouterLink],  // ← 使うものをここに書く
   templateUrl: './focus.html',
   styleUrl: './focus.scss'
 })
 ```
+
+---
+
+## HTTPインターセプターとは？（重要）
+
+すべてのHTTPリクエストに自動でJWTトークンを付けてくれる仕組み。
+
+```
+APIリクエスト → インターセプター → Authorization: Bearer <token> を追加 → Rails
+```
+
+これがあるとサービスごとにトークンを書かなくていい。
+設定方法は `07_routing_services.md` で説明する。
 
 ---
 

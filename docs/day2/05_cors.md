@@ -16,30 +16,20 @@ RailsにCORSを設定して「`localhost:4200` からのリクエストは許可
 
 ---
 
-## Gemの追加
-
-```ruby
-# Gemfile
-gem "rack-cors"
-```
-
-```bash
-bundle install
-```
-
----
-
 ## CORS設定ファイル
+
+今回は `rack-cors` がすでにインストール済み。設定ファイルを確認・修正する。
 
 ```ruby
 # config/initializers/cors.rb
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins "http://localhost:4200"  # Angularの開発サーバー
+    origins "http://localhost:4200"
 
     resource "*",
       headers: :any,
-      methods: [:get, :post, :patch, :delete, :options]
+      methods: [:get, :post, :patch, :delete, :options],
+      expose: ["Authorization"]  # ← JWTトークンをレスポンスヘッダーで受け取れるようにする
   end
 end
 ```
@@ -48,9 +38,9 @@ end
 
 **`origins`** — どのURLからのリクエストを許可するか。
 
-**`resource "*"`** — 全てのパスに対して適用する（`*` はワイルドカード）。
-
 **`methods`** — 許可するHTTPメソッド。`:options` はブラウザの事前確認リクエスト（プリフライト）のために必要。
+
+**`expose: ["Authorization"]`** — レスポンスヘッダーの `Authorization` をブラウザのJavaScriptから読めるようにする。これがないとAngular側でトークンを取得できない場合がある。
 
 ---
 

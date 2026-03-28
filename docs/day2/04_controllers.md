@@ -1,4 +1,4 @@
-# Day 2-② コントローラー実装
+# Day 2-② コントローラー実装（JWT認証含む）
 
 ## コントローラーとは？
 
@@ -12,11 +12,10 @@
 
 ## ファイルの置き場所
 
-`namespace :api` の下にあるので、ディレクトリも対応して作る：
-
 ```
 app/controllers/
 └── api/
+    ├── auth_controller.rb       # 認証（signup/login）
     ├── tasks_controller.rb
     ├── focus/
     │   ├── current_controller.rb
@@ -27,6 +26,116 @@ app/controllers/
 
 ---
 
+## JWT認証の仕組み
+
+```
+1. ユーザーがメール+パスワードでログイン
+2. Railsがパスワードを検証し、JWTトークンを返す
+3. AngularはトークンをlocalStorageに保存
+4. 以降のリクエストには Authorization: Bearer <token> を付ける
+5. Railsはトークンを検証してユーザーを特定する
+```
+
+---
+
+## Gemの追加
+
+```ruby
+# Gemfile
+gem "jwt"
+```
+
+```bash
+bundle install
+```
+
+---
+
+## ApplicationController（JWT検証）
+
+すべてのコントローラーの親クラス。ここにJWT検証ロジックを書くと、全エンドポイントで認証が必要になる。
+
+```ruby
+# app/controllers/application_controller.rb
+class ApplicationController < ActionController::API
+  before_action :authenticate!
+
+  private
+
+  def authenticate!
+    token = request.headers["Authorization"]&.split(" ")&.last
+    payload = JWT.decode(token, Rails.application.secret_key_base).first
+    @current_user = User.find(payload["user_id"])
+  rescue JWT::DecodeError, ActiveRecord::RecordNotFound
+    render json: { error: "認証が必要です" }, status: :unauthorized
+  end
+
+  def encode_token(user_id)
+    exp = 30.days.from_now.to_i
+    JWT.encode({ user_id: user_id, exp: exp }, Rails.application.secret_key_base)
+  end
+end
+```
+
+### ポイント解説
+
+**`before_action :authenticate!`** — コントローラーのメソッドが呼ばれる前に必ず実行される。
+
+**`request.headers["Authorization"]`** — リクエストヘッダーからトークンを取得。`Bearer eyJ...` という形式なので `split(" ").last` で本体だけ取り出す。
+
+**`JWT.decode`** — トークンを解析してpayload（中身）を取り出す。署名が違う・期限切れの場合は `JWT::DecodeError` が発生する。
+
+---
+
+## Api::AuthController
+
+```ruby
+# app/controllers/api/auth_controller.rb
+class Api::AuthController < ApplicationController
+  skip_before_action :authenticate!  # signup/login は認証不要
+
+  # POST /api/auth/signup
+  def signup
+    user = User.new(signup_params)
+    if user.save
+      token = encode_token(user.id)
+      render json: { token: token, user: user_json(user) }, status: :created
+    else
+      render json: { error: user.errors.full_messages.first }, status: :unprocessable_entity
+    end
+  end
+
+  # POST /api/auth/login
+  def login
+    user = User.find_by(email: params[:email])
+    if user&.authenticate(params[:password])
+      token = encode_token(user.id)
+      render json: { token: token, user: user_json(user) }
+    else
+      render json: { error: "メールアドレスまたはパスワードが違います" }, status: :unauthorized
+    end
+  end
+
+  private
+
+  def signup_params
+    params.permit(:name, :email, :password)
+  end
+
+  def user_json(user)
+    { id: user.id, name: user.name, email: user.email }
+  end
+end
+```
+
+### ポイント解説
+
+**`skip_before_action :authenticate!`** — 親クラスの `before_action` をこのコントローラーだけスキップする。
+
+**`user&.authenticate`** — `&.` はnilセーフ演算子。`user` が `nil`（ユーザーが見つからない）のときでもエラーにならない。
+
+---
+
 ## Api::TasksController
 
 ```ruby
@@ -34,17 +143,15 @@ app/controllers/
 class Api::TasksController < ApplicationController
 
   # GET /api/tasks
-  # タスク一覧をpriority昇順で返す
   def index
     tasks = Task.order(:priority)
     render json: tasks
   end
 
   # POST /api/tasks
-  # タスクを追加する（6件上限）
   def create
     task = Task.new(task_params)
-    task.priority = Task.count + 1  # 末尾に追加
+    task.priority = Task.count + 1
 
     if task.save
       render json: task, status: :created
@@ -54,45 +161,26 @@ class Api::TasksController < ApplicationController
   end
 
   # PATCH /api/tasks/reorder
-  # 優先順位を一括更新する
   def reorder
-    order = params[:order]  # [5, 2, 8, 1, 4, 3] のようなtask idの配列
-
-    order.each_with_index do |task_id, index|
+    params[:order].each_with_index do |task_id, index|
       Task.where(id: task_id).update_all(priority: index + 1)
     end
-
     render json: { ok: true }
   end
 
   # DELETE /api/tasks/:id
-  # タスクを削除する
   def destroy
-    task = Task.find(params[:id])
-    task.destroy
-    head :no_content  # 204 No Content（ボディなし）
+    Task.find(params[:id]).destroy
+    head :no_content
   end
 
   private
 
-  # 許可するパラメーターを絞る（セキュリティ）
   def task_params
     params.require(:task).permit(:title)
   end
 end
 ```
-
-### ポイント解説
-
-**`render json:`** — ハッシュや ActiveRecord オブジェクトを JSON に変換して返す。
-
-**`status: :created`** — HTTPステータス201を返す。作成成功のシグナル。
-
-**`status: :unprocessable_entity`** — ステータス422。バリデーションエラー時。
-
-**`head :no_content`** — ボディなしでステータス204だけ返す。DELETE成功時の慣習。
-
-**`params.require(:task).permit(:title)`** — 許可したパラメーターだけ受け取る（Strong Parameters）。
 
 ---
 
@@ -103,12 +191,8 @@ end
 class Api::Focus::CurrentController < ApplicationController
 
   # GET /api/focus/current
-  # 今日まだ処理していない最優先タスクを1件返す
   def index
-    # 今日すでにログがあるtask_idを取得
     logged_ids = DailyLog.where(logged_on: Date.today).pluck(:task_id)
-
-    # ログがないタスクの中で一番priorityが小さいものを取得
     task = Task.where.not(id: logged_ids).order(:priority).first
 
     if task
@@ -120,9 +204,7 @@ class Api::Focus::CurrentController < ApplicationController
 end
 ```
 
-### ポイント解説
-
-**`pluck(:task_id)`** — 指定したカラムの値だけを配列で取得する。SQLを最小限にする。
+**`pluck(:task_id)`** — 指定したカラムの値だけを配列で取得する。
 
 **`where.not(id: logged_ids)`** — `NOT IN` のSQL。「含まれないもの」を取得。
 
@@ -135,7 +217,6 @@ end
 class Api::Focus::LogController < ApplicationController
 
   # POST /api/focus/log
-  # done または skip を記録する
   def create
     log = DailyLog.new(
       task_id: params[:task_id],
@@ -161,20 +242,15 @@ end
 class Api::Review::TodayController < ApplicationController
 
   # GET /api/review/today
-  # 今日の達成数・スキップ数・残数を返す
   def index
-    logs = DailyLog.where(logged_on: Date.today)
-
-    done  = logs.where(status: "done").count
-    skip  = logs.where(status: "skip").count
+    logs  = DailyLog.where(logged_on: Date.today)
     total = Task.count
-    remaining = total - logs.count
 
     render json: {
-      done: done,
-      skip: skip,
-      remaining: remaining,
-      total: total
+      done:      logs.where(status: "done").count,
+      skip:      logs.where(status: "skip").count,
+      remaining: total - logs.count,
+      total:     total
     }
   end
 end
@@ -185,24 +261,20 @@ end
 ## 動作確認（curlで叩く）
 
 ```bash
-# タスク一覧
-curl http://localhost:3000/api/tasks
-
-# タスク追加
-curl -X POST http://localhost:3000/api/tasks \
+# ユーザー登録
+curl -X POST http://localhost:3000/api/auth/signup \
   -H "Content-Type: application/json" \
-  -d '{"task": {"title": "Rails学習"}}'
+  -d '{"name":"太郎","email":"taro@example.com","password":"password123"}'
 
-# フォーカス中のタスク取得
-curl http://localhost:3000/api/focus/current
-
-# done を記録
-curl -X POST http://localhost:3000/api/focus/log \
+# ログイン → tokenを取得
+curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"task_id": 1, "status": "done"}'
+  -d '{"email":"taro@example.com","password":"password123"}'
 
-# 今日の振り返り
-curl http://localhost:3000/api/review/today
+# 取得したtokenをセットしてタスク一覧を取得
+TOKEN="eyJ..."
+curl http://localhost:3000/api/tasks \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

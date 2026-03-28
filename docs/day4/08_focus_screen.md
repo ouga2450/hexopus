@@ -37,7 +37,6 @@ export class FocusComponent implements OnInit {
   loadCurrent() {
     this.loading.set(true);
     this.focusService.getCurrent().subscribe(res => {
-      // レスポンスが { current: null } の場合はタスクなし
       if ('current' in res && res.current === null) {
         this.currentTask.set(null);
       } else {
@@ -50,17 +49,13 @@ export class FocusComponent implements OnInit {
   done() {
     const task = this.currentTask();
     if (!task) return;
-    this.focusService.log(task.id, 'done').subscribe(() => {
-      this.loadCurrent();
-    });
+    this.focusService.log(task.id, 'done').subscribe(() => this.loadCurrent());
   }
 
   skip() {
     const task = this.currentTask();
     if (!task) return;
-    this.focusService.log(task.id, 'skip').subscribe(() => {
-      this.loadCurrent();
-    });
+    this.focusService.log(task.id, 'skip').subscribe(() => this.loadCurrent());
   }
 
   finish() {
@@ -88,7 +83,6 @@ export class FocusComponent implements OnInit {
     </div>
   </div>
 } @else {
-  <!-- 全タスク完了 -->
   <div class="all-done">
     <p>今日のタスクは全部終わったよ！</p>
     <button (click)="finish()">振り返りへ</button>
@@ -100,7 +94,7 @@ export class FocusComponent implements OnInit {
 
 **`(click)="done()"`** — クリックイベントをメソッドにバインドする。
 
-**`currentTask()!.title`** — `!` はTypeScriptの「nullではない」を明示するもの（Non-null assertion）。`@if` でnullチェック済みなので安全。
+**`currentTask()!.title`** — `!` はTypeScriptの「nullではない」を明示するもの。`@if` でnullチェック済みなので安全。
 
 ---
 
@@ -136,7 +130,8 @@ button {
 
 ## 動作確認チェックリスト
 
-- [ ] `/focus` を開くとタスクが表示される
+- [ ] ログイン済みで `/focus` を開くとタスクが表示される
+- [ ] 未ログインで `/focus` にアクセスすると `/login` にリダイレクトされる
 - [ ] 「達成」を押すと次のタスクに変わる
 - [ ] 「スキップ」を押すと次のタスクに変わる
 - [ ] 全タスク消化 or「今日はここまで」で `/review` に遷移する
@@ -145,4 +140,4 @@ button {
 
 ## 次のステップ
 
-→ [09_review_tasks_screen.md](09_review_tasks_screen.md) で振り返り・タスク管理画面を作る
+→ [09_review_tasks_screen.md](09_review_tasks_screen.md) で振り返り・タスク管理・ログイン画面を作る

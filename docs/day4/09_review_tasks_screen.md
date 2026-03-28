@@ -1,4 +1,105 @@
-# Day 4-② 振り返り画面・タスク管理画面
+# Day 4-② ログイン画面・振り返り画面・タスク管理画面
+
+---
+
+## ログイン画面（LoginComponent）
+
+### 役割
+- メールアドレスとパスワードでログイン
+- 初回ユーザーはここからサインアップもできる
+- ログイン成功 → `/focus` に遷移
+
+### コンポーネント
+
+```typescript
+// app/components/login/login.ts
+import { Component, signal, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
+
+@Component({
+  selector: 'app-login',
+  imports: [FormsModule],
+  templateUrl: './login.html',
+  styleUrl: './login.scss'
+})
+export class LoginComponent {
+  private authService = inject(AuthService);
+  private router = inject(Router);
+
+  email = signal('');
+  password = signal('');
+  name = signal('');
+  isSignup = signal(false);
+  errorMessage = signal('');
+
+  submit() {
+    this.errorMessage.set('');
+    const action = this.isSignup()
+      ? this.authService.signup(this.name(), this.email(), this.password())
+      : this.authService.login(this.email(), this.password());
+
+    action.subscribe({
+      next: () => this.router.navigate(['/focus']),
+      error: (err) => this.errorMessage.set(err.error?.error ?? 'エラーが発生しました')
+    });
+  }
+
+  toggleMode() {
+    this.isSignup.update(v => !v);
+    this.errorMessage.set('');
+  }
+}
+```
+
+### HTML
+
+```html
+<!-- app/components/login/login.html -->
+<div class="login">
+  <h1>Hexopus</h1>
+  <h2>{{ isSignup() ? 'アカウント登録' : 'ログイン' }}</h2>
+
+  <form (ngSubmit)="submit()">
+    @if (isSignup()) {
+      <input
+        [ngModel]="name()"
+        (ngModelChange)="name.set($event)"
+        name="name"
+        placeholder="名前"
+        required
+      />
+    }
+    <input
+      [ngModel]="email()"
+      (ngModelChange)="email.set($event)"
+      name="email"
+      type="email"
+      placeholder="メールアドレス"
+      required
+    />
+    <input
+      [ngModel]="password()"
+      (ngModelChange)="password.set($event)"
+      name="password"
+      type="password"
+      placeholder="パスワード（8文字以上）"
+      required
+    />
+
+    @if (errorMessage()) {
+      <p class="error">{{ errorMessage() }}</p>
+    }
+
+    <button type="submit">{{ isSignup() ? '登録' : 'ログイン' }}</button>
+  </form>
+
+  <button (click)="toggleMode()">
+    {{ isSignup() ? 'ログインはこちら' : 'アカウント登録はこちら' }}
+  </button>
+</div>
+```
 
 ---
 
@@ -29,9 +130,7 @@ export class ReviewComponent implements OnInit {
   summary = signal<ReviewSummary | null>(null);
 
   ngOnInit() {
-    this.reviewService.getToday().subscribe(data => {
-      this.summary.set(data);
-    });
+    this.reviewService.getToday().subscribe(data => this.summary.set(data));
   }
 
   backToFocus() {
@@ -62,7 +161,7 @@ export class ReviewComponent implements OnInit {
 
 ### 役割
 - タスクの一覧表示・追加・削除
-- 並び替え（ドラッグ&ドロップは後回し、上下ボタンでOK）
+- 上下ボタンで優先順位の並び替え
 
 ### コンポーネント
 
@@ -89,9 +188,7 @@ export class TasksComponent implements OnInit {
   }
 
   loadTasks() {
-    this.taskService.getTasks().subscribe(tasks => {
-      this.tasks.set(tasks);
-    });
+    this.taskService.getTasks().subscribe(tasks => this.tasks.set(tasks));
   }
 
   addTask() {
@@ -99,41 +196,27 @@ export class TasksComponent implements OnInit {
     if (!title) return;
 
     this.taskService.createTask(title).subscribe({
-      next: () => {
-        this.newTitle.set('');
-        this.loadTasks();
-      },
-      error: (err) => {
-        alert(err.error?.error ?? 'エラーが発生しました');
-      }
+      next: () => { this.newTitle.set(''); this.loadTasks(); },
+      error: (err) => alert(err.error?.error ?? 'エラーが発生しました')
     });
   }
 
   deleteTask(id: number) {
-    this.taskService.deleteTask(id).subscribe(() => {
-      this.loadTasks();
-    });
+    this.taskService.deleteTask(id).subscribe(() => this.loadTasks());
   }
 
   moveUp(index: number) {
     if (index === 0) return;
-    const tasks = [...this.tasks()];
-    [tasks[index - 1], tasks[index]] = [tasks[index], tasks[index - 1]];
-    const order = tasks.map(t => t.id);
-    this.taskService.reorder(order).subscribe(() => {
-      this.loadTasks();
-    });
+    const arr = [...this.tasks()];
+    [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+    this.taskService.reorder(arr.map(t => t.id)).subscribe(() => this.loadTasks());
   }
 
   moveDown(index: number) {
-    const tasks = this.tasks();
-    if (index === tasks.length - 1) return;
-    const arr = [...tasks];
+    const arr = [...this.tasks()];
+    if (index === arr.length - 1) return;
     [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
-    const order = arr.map(t => t.id);
-    this.taskService.reorder(order).subscribe(() => {
-      this.loadTasks();
-    });
+    this.taskService.reorder(arr.map(t => t.id)).subscribe(() => this.loadTasks());
   }
 }
 ```
@@ -145,10 +228,8 @@ export class TasksComponent implements OnInit {
 <div class="tasks">
   <h2>タスク管理</h2>
 
-  <!-- 追加フォーム -->
   <form (ngSubmit)="addTask()">
     <input
-      [(ngModel)]="newTitle"
       [ngModel]="newTitle()"
       (ngModelChange)="newTitle.set($event)"
       placeholder="タスク名を入力"
@@ -157,7 +238,6 @@ export class TasksComponent implements OnInit {
     <button type="submit">追加</button>
   </form>
 
-  <!-- タスク一覧 -->
   <ul>
     @for (task of tasks(); track task.id; let i = $index) {
       <li>
@@ -171,12 +251,9 @@ export class TasksComponent implements OnInit {
 </div>
 ```
 
-### FormsModule と ngModel
+**`[(ngModel)]` vs `[ngModel] + (ngModelChange)`**
 
-**`[(ngModel)]`** = 双方向バインディング。入力値とTypeScriptの変数を同期する。
-ただし Signals と組み合わせるときは少し書き方が変わる（上記参照）。
-
-`FormsModule` を `imports` に追加しないと動かないので注意。
+Signalsと組み合わせるときは双方向バインディング `[(ngModel)]` が使えないため、読み取りと書き込みを分けて書く。
 
 ---
 
