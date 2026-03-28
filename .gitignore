@@ -1,0 +1,15 @@
+# Rails
+backend/log/*
+backend/tmp/*
+backend/storage/*
+backend/.env
+backend/config/master.key
+backend/config/credentials/*.key
+
+# Node / Angular
+frontend/node_modules/
+backend/node_modules/
+frontend/dist/
+
+# Docker
+.DS_Store

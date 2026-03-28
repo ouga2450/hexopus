@@ -1,0 +1,4 @@
+FROM node:20-slim
+ENV TZ Asia/Tokyo
+RUN npm install -g @angular/cli
+WORKDIR /app
