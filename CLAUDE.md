@@ -22,6 +22,16 @@ focus6/
 
 ## DB設計
 
+### users テーブル
+
+| カラム | 型 | 説明 |
+|---|---|---|
+| id | integer PK | |
+| name | string | ユーザー名 |
+| email | string | ユニーク制約あり |
+| password_digest | string | bcryptハッシュ |
+| created_at | datetime | |
+
 ### tasks テーブル
 
 | カラム | 型 | 説明 |
@@ -50,6 +60,18 @@ focus6/
 ## Rails API エンドポイント一覧
 
 すべて `/api/` namespace 配下に実装する。
+
+### 認証
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| POST | /api/auth/signup | ユーザー登録（name, email, password） |
+| POST | /api/auth/login | ログイン → JWTトークン返却 |
+
+```ruby
+# ログインレスポンス
+{ "token": "eyJ...", "user": { "id": 1, "name": "太郎", "email": "taro@example.com" } }
+```
 
 ### タスク管理
 
@@ -246,5 +268,6 @@ render json: current_task ? current_task : { current: nil }
 - `rails new` は完了済み。`--api` フラグが付いているか確認すること。
 - DBはPostgreSQLを使う。
 - Angularのバージョンは最新安定版でOK。
-- 認証は不要（シングルユーザー前提）。
+- 認証はJWTのみで実装する。Deviseは使わない。
+- `bcrypt` でパスワードハッシュ化、`jwt` gem でトークン発行・検証。
 - テストは今回のスコープ外。動くものを優先する。
